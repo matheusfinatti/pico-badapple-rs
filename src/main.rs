@@ -3,8 +3,11 @@
 
 use bsp::entry;
 use bsp::hal;
+use defmt::*;
+use defmt_rtt as _;
 use hal::pac;
-use panic_halt as _;
+
+use panic_probe as _;
 
 use hal::gpio::*;
 use hal::Clock;
@@ -27,17 +30,13 @@ use embedded_graphics::Drawable;
 // Embed the 'Hz' function.
 use fugit::RateExtU32;
 
-use rtt_target::{rprintln, rtt_init_print};
-
 // Display specs
-const WIDTH: i32 = 320;
-const HEIGHT: i32 = 240;
+const HEIGHT: i32 = 320;
+const WIDTH: i32 = 240;
 
 #[entry]
 fn main() -> ! {
-    rtt_init_print!();
-
-    rprintln!("Starting");
+    println!("Program start");
 
     let mut pac = pac::Peripherals::take().unwrap();
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
@@ -64,8 +63,7 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // Configure LED pin as output
-    let mut led_pin = pins.gpio25.into_push_pull_output();
+    println!("RP2040 has started");
 
     // Configure SPI pins for display
     let spi_mosi: Pin<_, FunctionSpi, PullNone> = pins.gpio19.reconfigure();
@@ -95,33 +93,38 @@ fn main() -> ! {
     let mut bl = pins.gpio20.into_push_pull_output();
     bl.set_high().unwrap();
 
-    rprintln!("Just before initializing display");
-
     // Initialize the display
     let mut display = Builder::new(models::ST7789, di)
         .reset_pin(rst)
         .display_size(WIDTH as u16, HEIGHT as u16)
         .invert_colors(options::ColorInversion::Inverted)
-        .orientation(options::Orientation::default())
-        .color_order(options::ColorOrder::Bgr)
+        .orientation(options::Orientation {
+            rotation: options::Rotation::Deg270,
+            mirrored: false,
+        })
         .init(&mut timer)
         .unwrap();
 
-    rprintln!("Display initialized");
+    println!("Display initialized");
 
-    led_pin.set_high().unwrap();
     // Clear the display initially
-    display.clear(Rgb565::GREEN).unwrap();
+    display.clear(Rgb565::BLACK).unwrap();
 
     // Draw a rectangle on screen
     let style = embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-        .fill_color(Rgb565::GREEN)
+        .fill_color(Rgb565::RED)
         .build();
 
-    embedded_graphics::primitives::Rectangle::new(Point::zero(), display.bounding_box().size)
-        .into_styled(style)
-        .draw(&mut display)
-        .unwrap();
+    embedded_graphics::primitives::Rectangle::new(
+        Point::zero(),
+        display.bounding_box().size.saturating_sub(Size {
+            width: 120,
+            height: 120,
+        }),
+    )
+    .into_styled(style)
+    .draw(&mut display)
+    .unwrap();
 
     loop {
         // Do nothing
